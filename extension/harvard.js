@@ -204,16 +204,15 @@ const Harvard = (() => {
     const first = await get(`${QR}/browse/index`);
     const b = parseBrowse(first.text, first.url);
     if (!b.signedIn) return { signedIn: false };
-    const reports = [];
-    for (const [term, href] of Object.entries(b.terms)) {
+    let count = 0;
+    const perTerm = await Promise.all(Object.entries(b.terms).map(async ([term, href]) => {  // all terms at once
       const page = await get(href);
-      const seen = new Set();
-      for (const link of parseBrowse(page.text, page.url).links) {
-        const r = parseLink(link, term);
-        if (!seen.has(r.key)) { seen.add(r.key); reports.push(r); }
-      }
-      onProgress?.(term, reports.length);
-    }
+      const links = parseBrowse(page.text, page.url).links.map((l) => parseLink(l, term));
+      onProgress?.(count += links.length);
+      return links;
+    }));
+    const seen = new Set();
+    const reports = perTerm.flat().filter((r) => !seen.has(r.key) && seen.add(r.key));
     return { signedIn: true, terms: Object.keys(b.terms), reports };
   }
 

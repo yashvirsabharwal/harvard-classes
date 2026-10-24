@@ -9,6 +9,7 @@ extension scripts in extension/.
 """
 
 import argparse
+import gzip
 import json
 import shutil
 import sys
@@ -52,8 +53,7 @@ def catalog(conn) -> dict:
             courses.append({
                 "term": term, "code": c.code, "title": c.title, "course_id": c.course_id,
                 "instructors": c.instructors, "gened": split(c.gen_ed), "divisional": split(c.divisional),
-                "qrd": c.qrd == "Yes", "level": c.level, "joint": c.joint, "subject": d["subject"],
-                "department": d["department"], "days": d["days"], "times": d["times"], "component": d["component"],
+                "qrd": c.qrd == "Yes", "level": c.level, "joint": c.joint, "department": d["department"], "days": d["days"], "times": d["times"], "component": d["component"],
                 "consent": d["consent"], "grading": d["grading_basis"], "prereq": d["course_requirements"],
                 "prep": d["recommended_prep"], "notes_text": d["course_notes"], "desc": d["description"], "url": d["url"],
             })
@@ -84,9 +84,11 @@ def main() -> None:
                         '  <script src="app.js"></script>', 1)
     (out / "finder.html").write_text(html)
     (out / "rules.json").write_text(json.dumps([json.loads(f.read_text()) for f in sorted(RULES.glob("*.json"))]))
-    data = json.dumps(catalog(conn), separators=(",", ":"))
-    (out / "catalog.json").write_text(data)
-    print(f"built {out} (catalog {len(data) // 1024} KB). In Chrome: chrome://extensions > Developer mode > "
+    data = json.dumps(catalog(conn), separators=(",", ":")).encode()
+    packed = gzip.compress(data, compresslevel=9, mtime=0)  # unpacked in the page with DecompressionStream
+    (out / "catalog.json.gz").write_bytes(packed)
+    print(f"built {out} (catalog {len(packed) // 1024} KB gzipped, {len(data) // 1024} KB raw). "
+          f"In Chrome: chrome://extensions > Developer mode > "
           f"Load unpacked > choose {out}", file=sys.stderr)
 
 

@@ -12,6 +12,7 @@ affiliates.
 
 import argparse
 import functools
+import gzip
 import http.server
 import json
 import sys
@@ -83,15 +84,20 @@ def build(conn) -> dict:
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     data: bytes = b""
+    data_gz: bytes = b""
 
     def do_GET(self):
         if self.path.split("?")[0] == "/data.json":
+            gz = "gzip" in self.headers.get("Accept-Encoding", "")
+            body = self.data_gz if gz else self.data
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(self.data)))
+            if gz:
+                self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(self.data)
+            self.wfile.write(body)
         else:
             super().do_GET()
 
@@ -117,6 +123,7 @@ def main() -> None:
         return
 
     Handler.data = data
+    Handler.data_gz = gzip.compress(data, compresslevel=6)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), functools.partial(Handler, directory=str(WEB)))
     print(f"serving http://127.0.0.1:{args.port}  (Ctrl-C to stop)", file=sys.stderr)
     try:

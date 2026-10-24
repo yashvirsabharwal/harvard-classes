@@ -107,7 +107,10 @@ def enumerate_courses(school: str, term: str, max_pages: int | None, workers: in
 # --- detail page parsing ----------------------------------------------------
 
 def parse_course(url: str, html: str) -> dict:
-    soup = BeautifulSoup(html, "lxml")
+    # Everything we keep sits between these two comments; parsing just that
+    # slice (instead of the whole 135 KB page) is several times faster.
+    start, end = html.find("<!-- ========== Page Heading"), html.find("<!-- Credit Conversion")
+    soup = BeautifulSoup(html[start:end] if 0 <= start < end else html, "lxml")
     _, _, term, session_name, section = url.removeprefix(BASE).strip("/").split("/")
     subject_catalog = text(soup.select_one("#course-sub-cat span")) or ""
     # Multi-section courses show the section too ("SPANSH 40 001").

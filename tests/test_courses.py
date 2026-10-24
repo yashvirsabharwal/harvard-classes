@@ -43,3 +43,32 @@ def test_double_counts():
     assert double_counts([req("divisional"), req("qrd")]) == 1
     assert double_counts([req("concentration"), req("concentration")]) == 1
     assert double_counts([req("divisional"), req("qrd"), req("concentration")]) == 2
+
+
+def test_reports_for_counts_each_section_once():
+    from collections import defaultdict
+
+    from harvard_classes.courses import course_stats, reports_for
+
+    def rep(link, codes, instructor, n, overall):
+        return {"link_id": link, "course_id": 1, "strm": link.split("-")[2], "course_codes": codes,
+                "instructor": instructor, "responded": n, "course_overall": overall, "workload_median": 4.0}
+
+    rows = [
+        # co-taught: one report per instructor, same course numbers
+        rep("FAS-1-2242-1-1-001", "NEURO 57, OEB 57", "Bence Olveczky", 51, 4.05),
+        rep("FAS-1-2242-1-1-001", "NEURO 57, OEB 57", "Naomi Pierce", 51, 4.05),
+        # cross-listed copy of the same section (different listing number)
+        rep("FAS-1-2262-1-1-001", "NEURO 57, OEB 57", "Naomi Pierce", 18, 3.77),
+        rep("FAS-1-2262-1-2-001", "NEURO 57, OEB 57", "Naomi Pierce", 18, 3.77),
+        # separately evaluated listings in the same term stay separate
+        rep("FAS-1-2270-1-1-001", "NEURO 57", "Naomi Pierce", 30, 4.0),
+        rep("FAS-1-2270-1-2-001", "OEB 57", "Naomi Pierce", 10, 3.0),
+    ]
+    by_id = defaultdict(list, {1: rows})
+    c = course("NEURO 57")
+    c.course_id, c.instructors = 1, ["Bence Olveczky"]
+    reports = reports_for(c, by_id, defaultdict(list))
+    stats = course_stats(reports, c.instructors)
+    assert stats["responses"] == 51 + 18 + 30 + 10
+    assert stats["same_instructor"]  # Olveczky only appears on a merged co-taught report

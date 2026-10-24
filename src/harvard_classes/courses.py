@@ -142,7 +142,7 @@ def overlap_notes(reqs: list[Requirement]) -> list[str]:
 def load_reports(conn):
     by_id, by_code = defaultdict(list), defaultdict(list)
     for r in conn.execute(
-            "SELECT course_id, course_codes, strm, instructor, responded, course_overall, workload_median "
+            "SELECT link_id, course_id, course_codes, strm, instructor, responded, course_overall, workload_median "
             "FROM qr_reports WHERE parse_status = 'ok' AND course_overall IS NOT NULL"):
         r = dict(r)
         by_id[r["course_id"]].append(r)
@@ -164,8 +164,7 @@ def course_stats(reports: list[dict], instructors: list[str]) -> dict:
         "hours": sum(h * w for h, w in hours) / sum(w for _, w in hours) if hours else None,
         "responses": n,
         "terms": len({r["strm"] for r in reports}),
-        "same_instructor": any((r["instructor"] or "").split()[-1:] and r["instructor"].split()[-1].lower() in teaching
-                               for r in reports),
+        "same_instructor": any(name.split()[-1].lower() in teaching for r in reports for name in r["instructors"] if name),
     }
 
 
@@ -208,15 +207,17 @@ def sequence_prereq(code: str, known: set[str], done: set[str]) -> str | None:
 
 
 def reports_for(c: Course, by_id, by_code) -> list[dict]:
-    """Past Q reports for a course: same course id, or any of its codes/cross-listings
-    (a cross-listed course's report appears under each listing, so de-duplicate)."""
-    seen, reports = set(), []
+    """Past Q results for a course, one per section and term: found by course id or
+    by any of its codes. A section gets one report per instructor and a cross-listed
+    course one per listing, all repeating the same course numbers, so they're merged
+    (keeping every instructor's name)."""
+    merged: dict[tuple, dict] = {}
     for r in by_id.get(c.course_id, []) + [x for code in [c.code, *c.joint] for x in by_code.get(code, [])]:
-        key = (r["strm"], r["instructor"], r["responded"], r["course_overall"])
-        if key not in seen:
-            seen.add(key)
-            reports.append(r)
-    return reports
+        section = r["link_id"].rsplit("-", 1)[1]  # FAS-<course id>-<term>-1-<listing>-<section>
+        key = (r["strm"], section, r["course_codes"], r["responded"], r["course_overall"])
+        m = merged.setdefault(key, {**r, "instructors": set()})
+        m["instructors"].add(r["instructor"] or "")
+    return list(merged.values())
 
 
 def filter_courses(conn, term: str, include_satisfied: bool, include_grad: bool):

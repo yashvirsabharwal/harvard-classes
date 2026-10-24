@@ -141,12 +141,16 @@ their own browser session instead of from these scrapers:
 
 - **Record:** reads `my.harvard.edu/student/grades` and the advising report
   with the student's cookies (sign in to my.harvard first).
-- **Q Reports:** lists all reports once (6 term pages), then fetches reports
-  only for courses on screen, newest-visible first; "Load Q for my open
-  requirements" fetches the rest for courses that fill an open requirement.
-  Results are cached, so each report is fetched once.
-- **Catalog:** bundled (public data exported from `data/harvard.db`), since
-  scraping ~9,000 pages per student would be slow.
+- **Q Reports:** lists all reports once (the 6 term pages, fetched in
+  parallel), then fetches course numbers for courses on screen, newest
+  sections first and at most 4 per course; opening a course loads the rest,
+  and "Load Q for my open requirements" queues every course that fills an open
+  requirement. A section has one report per instructor and a cross-listed
+  course one per listing, all repeating the same course numbers, so it fetches
+  one per section listing and merges identical copies (the Python side counts
+  them the same way). Results are cached per section, so each is fetched once.
+- **Catalog:** bundled, gzipped (≈1.2 MB; public data exported from
+  `data/harvard.db`), since scraping ~9,000 pages per student would be slow.
 
 Nothing leaves the browser: data is kept in `chrome.storage.local` ("Clear
 stored data" wipes it), and the extension never sees a password; it only uses

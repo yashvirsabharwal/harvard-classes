@@ -11,7 +11,8 @@ const DEFAULTS = {
   gened: [], divisional: [], qrd: false, hideTaken: true, hideAdvanced: true, sort: "code",
 };
 
-let data, state, shown = PAGE;
+let data, state, shown = PAGE, frame = 0;
+const openCourses = new Set();  // "term|code" of expanded courses, kept open across re-renders
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -37,7 +38,11 @@ function update(changes) {
   Object.assign(state, changes);
   shown = PAGE;
   saveState();
-  render();
+  scheduleRender();
+}
+
+function scheduleRender() {  // coalesce bursts (slider drags, Q results streaming in) into one render per frame
+  if (!frame) frame = requestAnimationFrame(() => { frame = 0; render(); });
 }
 
 // --- helpers -----------------------------------------------------------------
@@ -64,14 +69,22 @@ const reqVisible = (i) => state.showDone || data.requirements[i].status !== "sat
 
 // --- filtering ---------------------------------------------------------------
 
+// Per-course values the filters need, computed once when data arrives.
+function prepare(c) {
+  c._key = `${c.term}|${c.code}`;
+  c._hay = `${c.code} ${c.joint.join(" ")} ${c.title} ${c.instructors.join(" ")} ${c.department || ""} ${c.desc || ""}`.toLowerCase();
+  c._days = (c.days || "").split(",").filter(Boolean);
+  c._span = meetingSpan(c);
+}
+
+const hiddenByDefault = (c) => (state.hideTaken && c.taken) || (state.hideAdvanced && !c.named && (c.grad || c.research));
+
 function filtered() {
   const q = state.q.trim().toLowerCase();
   const terms = q ? q.split(/\s+/) : [];
   const days = new Set(state.days);
   return data.courses.filter((c) => {
-    if (c.term !== state.term) return false;
-    if (state.hideTaken && c.taken) return false;
-    if (state.hideAdvanced && !c.named && (c.grad || c.research)) return false;
+    if (c.term !== state.term || hiddenByDefault(c)) return false;
     if (state.reqs.length) {
       const has = (i) => c.reqs.includes(i);
       if (state.mode === "all" ? !state.reqs.every(has) : !state.reqs.some(has)) return false;
@@ -80,22 +93,13 @@ function filtered() {
     if (state.qrd && !c.qrd) return false;
     if (state.gened.length && !state.gened.some((g) => c.gened.includes(g))) return false;
     if (state.divisional.length && !state.divisional.some((d) => c.divisional.includes(d))) return false;
-    if (days.size) {
-      const cd = (c.days || "").split(",").filter(Boolean);
-      if (!cd.length || cd.some((d) => !days.has(d))) return false;  // meets only on the chosen days
-    }
-    if (state.after > 7 || state.before < 23) {
-      const span = meetingSpan(c);
-      if (!span || span[0] < state.after || span[1] > state.before) return false;
-    }
+    if (days.size && (!c._days.length || c._days.some((d) => !days.has(d)))) return false;  // meets only on chosen days
+    if ((state.after > 7 || state.before < 23) && (!c._span || c._span[0] < state.after || c._span[1] > state.before)) return false;
     if (state.hasQ && !c.q) return false;
     if (c.q && state.minRating > 1 && c.q.rating < state.minRating) return false;
     if (state.minRating > 1 && !c.q) return false;
     if (state.maxHours < 25 && (!c.q || c.q.hours === null || c.q.hours > state.maxHours)) return false;
-    if (terms.length) {
-      const hay = `${c.code} ${c.joint.join(" ")} ${c.title} ${c.instructors.join(" ")} ${c.department || ""} ${c.desc || ""}`.toLowerCase();
-      if (!terms.every((t) => hay.includes(t))) return false;
-    }
+    if (terms.length && !terms.every((t) => c._hay.includes(t))) return false;
     return true;
   });
 }
@@ -110,11 +114,13 @@ const SORTS = {
 // --- rendering ---------------------------------------------------------------
 
 function renderSidebar() {
-  const termCourses = data.courses.filter((c) => c.term === state.term && !(state.hideTaken && c.taken)
-    && !(state.hideAdvanced && !c.named && (c.grad || c.research)));
+  const counts = new Array(data.requirements.length).fill(0);
+  for (const c of data.courses) {
+    if (c.term === state.term && !hiddenByDefault(c)) for (const i of c.reqs) counts[i]++;
+  }
   $("reqs").innerHTML = data.requirements.map((r, i) => {
     if (!reqVisible(i)) return "";
-    const n = termCourses.filter((c) => c.reqs.includes(i)).length;
+    const n = counts[i];
     const status = r.status.replace("_", " ");
     return `<li><button data-req="${i}" class="${state.reqs.includes(i) ? "on" : ""}" title="${esc(status + (r.note ? " · " + r.note : ""))}">
       <span class="dot ${r.status}"></span><span class="label">${esc(r.label)}</span><span class="n">${n}</span></button></li>`;
@@ -154,6 +160,7 @@ function courseHTML(c) {
   const when = [c.days?.replace(/,/g, " "), c.times].filter(Boolean).join(" · ");
   const rows = [
     ["Instructors", c.instructors.join(", ")],
+    ["Q reports", c.q?.total > c.q?.reports ? `${c.q.reports} of ${c.q.total} loaded (newest first)` : ""],
     ["Also listed as", c.joint.join(", ")],
     ["Requirements", c.prereq],
     ["Recommended prep", c.prep],
@@ -164,7 +171,7 @@ function courseHTML(c) {
     ["Grading", c.grading],
     ["Component", c.component],
   ].filter(([, v]) => v);
-  return `<li><details class="course">
+  return `<li><details class="course" data-key="${esc(c._key)}"${openCourses.has(c._key) ? " open" : ""}>
     <summary>
       <div class="title-line"><span class="code">${esc(c.code)}</span><span class="ctitle">${esc(c.title)}</span></div>
       <div class="q">${q}</div>
@@ -225,6 +232,16 @@ function wire() {
   $("sort").addEventListener("change", (e) => update({ sort: e.target.value }));
   $("reset").addEventListener("click", () => update({ ...DEFAULTS, term: state.term }));
   $("more").addEventListener("click", () => { shown += PAGE; render(); });
+  $("results").addEventListener("toggle", (e) => {  // toggle doesn't bubble; listen in the capture phase
+    const key = e.target.dataset?.key;
+    if (!key) return;
+    if (e.target.open) {
+      openCourses.add(key);
+      source.onExpand?.(data.courses.find((c) => c._key === key));
+    } else {
+      openCourses.delete(key);
+    }
+  }, true);
   // Our own updates use replaceState (no event); this catches pasted or edited URLs.
   window.addEventListener("hashchange", () => { if (!data) return; loadState(); shown = PAGE; render(); });
   $("filtersToggle").addEventListener("click", (e) => {
@@ -240,6 +257,7 @@ const source = window.courseFinderSource || { load: () => fetch("data.json").the
 
 function init(d) {
   data = d;
+  d.courses.forEach(prepare);
   genedCats = [...new Set(d.courses.flatMap((c) => c.gened))].sort();
   divisions = [...new Set(d.courses.flatMap((c) => c.divisional))].sort();
   const p = d.profile || {};
@@ -249,7 +267,7 @@ function init(d) {
   render();
 }
 
-window.courseFinder = { setData: init, render: () => data && render() };
+window.courseFinder = { setData: init, render: () => data && scheduleRender() };
 wire();
 source.load().then(init).catch((e) => {
   console.error(e);

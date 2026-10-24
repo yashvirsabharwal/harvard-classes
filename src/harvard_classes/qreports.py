@@ -18,6 +18,7 @@ import asyncio
 import json
 import re
 import sys
+from html import unescape
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -33,6 +34,8 @@ QR = "https://qreports.fas.harvard.edu"
 BROWSE = f"{QR}/browse/index"
 MAX_SESSIONS = 5  # sign-ins per run before giving up
 TERM_RE = re.compile(r"^\d{4} (Fall|Spring|Summer|Winter)$")
+H3_RE = re.compile(r"<h3[^>]*>(.*?)</h3>", re.S | re.I)
+TAG_RE = re.compile(r"<[^>]+>")
 
 # "AFRAMER 10-Introduction to African American Studies 001 (McCarthy)"
 LINK_RE = re.compile(
@@ -160,7 +163,8 @@ def classify(html: str, row) -> str:
     """'ok' if the page is the report we asked for, 'mismatch' if it is a different
     report, 'invalid' if it has no report content (e.g. the session went stale and
     only the table of contents came back)."""
-    heads = [squash(h.get_text(" ")) for h in BeautifulSoup(html, "lxml").select("h3")]
+    # Only the headings matter here, so skip a full HTML parse (it runs on every report).
+    heads = [squash(unescape(TAG_RE.sub(" ", h))) for h in H3_RE.findall(html)]
     course = next((h.removeprefix("Course Feedback for ") for h in heads if h.startswith("Course Feedback for ")), None)
     instructor = next((h.removeprefix("Instructor Feedback for ") for h in heads if h.startswith("Instructor Feedback for ")), "")
     if course is None:
