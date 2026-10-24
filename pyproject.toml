@@ -1,0 +1,30 @@
+[project]
+name = "harvard-classes"
+version = "0.1.0"
+description = "Scrape Harvard course catalog and Q Reports into SQLite"
+authors = [
+    { name = "Yash" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "lxml>=6.1.3",
+    "playwright>=1.64.1",
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+catalog = "harvard_classes.catalog:main"
+qreports = "harvard_classes.qreports:main"
+import-me = "harvard_classes.myharvard:main"
+courses = "harvard_classes.courses:main"
+site = "harvard_classes.site:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

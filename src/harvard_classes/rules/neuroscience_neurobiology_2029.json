@@ -1,0 +1,79 @@
+{
+  "name": "Neuroscience: Neurobiology Track (Class of 2029+)",
+  "sources": [
+    "https://www.mcb.harvard.edu/neurobiology-track-worksheet/ (Neurobio_worksheet_29.pdf, updated 8/2026)",
+    "https://www.mcb.harvard.edu/undergraduate/neuroscience/neuro-courses/ (elective list, 2026-27)"
+  ],
+  "notes": "Patterns are regular expressions matched against the full catalog code (e.g. 'NEURO 105'). 'audit_title' matches the requirement line in the my.harvard advising report. 'broad': true marks open-ended rules (e.g. any Math course); graduate-level or research courses are only suggested for non-broad rules that name them.",
+  "requirements": [
+    {
+      "audit_title": "Intermediate Biology",
+      "label": "Intermediate Biology",
+      "courses": [
+        "LIFESCI 50[AB]?",
+        "LIFESCI 2",
+        "HEB 10",
+        "HEB 50",
+        "HEB 55",
+        "MCB 6[03568]",
+        "OEB 5[03]",
+        "SCRB 50",
+        "ENG-SCI 53"
+      ]
+    },
+    {
+      "audit_title": "Two core neuroscience courses",
+      "label": "Core Neuroscience (2)",
+      "courses": [
+        "NEURO 57",
+        "NEURO 105",
+        "NEURO 115",
+        "NEURO 120",
+        "NEURO 125",
+        "NEURO 1202",
+        "PSY 14"
+      ]
+    },
+    {
+      "audit_title": "Two advanced courses in neuroscience",
+      "label": "Advanced Neuroscience (2)",
+      "courses": [
+        "NEURO 101\\w+",
+        "BE 1(29|30|31)",
+        "NEURO 1(05|15|20|25|29|41|45|46|70|75|80)",
+        "NEURO 1202",
+        "NEURO 1401",
+        "OEB 145",
+        "PSY 1(201|309|325|406|451)",
+        "SCRB 1(85|95)",
+        "LIFESCI 100\\w*",
+        "APMTH 226",
+        "NEURO 2(31|40)",
+        "BCMP 213",
+        "ENG-SCI 223"
+      ],
+      "note": "At most one Neuro 101 tutorial counts; extra core courses also count here."
+    },
+    {
+      "audit_title": "One course at the level of Math Mb/1a or above",
+      "label": "Calculus (Math MB/1A or higher)",
+      "courses": [
+        "MATH (LS|MB|1A|1B|\\d{2,}\\w*)"
+      ],
+      "note": "With calculus proficiency (AP 4/5 or placement into 1B+), any Applied Math, Math, Stats or select CS course counts instead.",
+      "broad": true
+    },
+    {
+      "audit_title": "One Additional Mathematics, Statistics, or CS",
+      "label": "Additional Math/Stats/CS",
+      "courses": [
+        "MATH \\w+",
+        "APMTH \\w+",
+        "STAT \\w+",
+        "COMPSCI \\w+"
+      ],
+      "note": "CS courses must be approved by concentration advisors in advance.",
+      "broad": true
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Course Finder</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◆</span>
+      <div>
+        <h1>Course Finder</h1>
+        <p class="sub" id="profile"></p>
+      </div>
+    </div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Search code, title, instructor, description…" autocomplete="off" aria-label="Search courses">
+    </div>
+    <div class="term" role="radiogroup" aria-label="Term" id="terms"></div>
+    <button class="filters-toggle" id="filtersToggle" aria-expanded="false" aria-controls="sidebar">Filters</button>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <section>
+        <div class="section-head">
+          <h2>Your requirements</h2>
+          <div class="seg small" role="radiogroup" aria-label="Requirement match mode">
+            <button data-mode="any" class="on" title="Courses counting toward any selected requirement">any</button>
+            <button data-mode="all" title="Courses counting toward every selected requirement">all</button>
+          </div>
+        </div>
+        <ul class="reqs" id="reqs"></ul>
+        <label class="check"><input type="checkbox" id="double"> Counts toward 2+ open requirements at once</label>
+        <label class="check"><input type="checkbox" id="showDone"> Show satisfied requirements</label>
+      </section>
+
+      <section>
+        <h2>Schedule</h2>
+        <div class="chips" id="days"></div>
+        <label class="range">Starts after <output id="afterOut"></output>
+          <input type="range" id="after" min="7" max="20" step="0.5" value="7">
+        </label>
+        <label class="range">Ends by <output id="beforeOut"></output>
+          <input type="range" id="before" min="9" max="23" step="0.5" value="23">
+        </label>
+      </section>
+
+      <section>
+        <h2>Q Reports</h2>
+        <label class="range">Min rating <output id="minRatingOut"></output>
+          <input type="range" id="minRating" min="1" max="5" step="0.1" value="1">
+        </label>
+        <label class="range">Max hours/week <output id="maxHoursOut"></output>
+          <input type="range" id="maxHours" min="1" max="25" step="1" value="25">
+        </label>
+        <label class="check"><input type="checkbox" id="hasQ"> Only courses with Q data</label>
+      </section>
+
+      <section>
+        <h2>Course type</h2>
+        <div class="chips" id="gened"></div>
+        <div class="chips" id="divisional"></div>
+        <label class="check"><input type="checkbox" id="qrd"> QRD</label>
+        <label class="check"><input type="checkbox" id="hideTaken" checked> Hide courses I've taken</label>
+        <label class="check"><input type="checkbox" id="hideAdvanced" checked> Hide grad, research &amp; tutorials <span class="hint">(unless a requirement names them)</span></label>
+      </section>
+
+      <button class="reset" id="reset">Reset filters</button>
+      <p class="fine" id="generated"></p>
+    </aside>
+
+    <main>
+      <div class="toolbar">
+        <p id="count" aria-live="polite"></p>
+        <label class="sort">Sort
+          <select id="sort">
+            <option value="code">Course code</option>
+            <option value="rating">Q rating</option>
+            <option value="hours">Fewest hours</option>
+            <option value="responses">Most Q responses</option>
+          </select>
+        </label>
+      </div>
+      <ol class="results" id="results"></ol>
+      <button class="more" id="more" hidden>Show more</button>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
