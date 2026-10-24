@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Harvard Course Finder",
+  "version": "0.1.0",
+  "description": "Find courses that count toward your Harvard requirements, with Q Report ratings. Reads my.harvard and Q Reports from your own session; nothing leaves your browser.",
+  "action": {
+    "default_title": "Open Course Finder"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://my.harvard.edu/*",
+    "https://qreports.fas.harvard.edu/*",
+    "https://*.bluera.com/*",
+    "https://login.harvard.edu/*"
+  ]
+}

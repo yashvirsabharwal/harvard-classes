@@ -19,6 +19,7 @@ qreports = "harvard_classes.qreports:main"
 import-me = "harvard_classes.myharvard:main"
 courses = "harvard_classes.courses:main"
 site = "harvard_classes.site:main"
+extension = "harvard_classes.extension:main"
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]

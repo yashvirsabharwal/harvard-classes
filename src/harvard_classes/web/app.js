@@ -1,4 +1,6 @@
-// Course Finder: filters the data exported by `uv run site` (data.json).
+// Course Finder: filters course data and renders it. The data comes from
+// data.json (`uv run site`) or, in the browser extension, from
+// window.courseFinderSource, which can also react to what's on screen.
 // State lives in the URL hash so a filtered view survives reloads.
 
 const PAGE = 60;
@@ -31,6 +33,7 @@ function saveState() {
 }
 
 function update(changes) {
+  if (!data) return;  // still loading
   Object.assign(state, changes);
   shown = PAGE;
   saveState();
@@ -147,7 +150,7 @@ function courseHTML(c) {
     ? `<div><b>${c.q.rating.toFixed(2)}</b><span>Q rating</span></div>
        <div><b>${c.q.hours ?? "–"}</b><span>hrs/wk</span></div>
        <div><b>${c.q.responses}</b><span>${c.q.same_instructor ? "responses" : "resp · new instr"}</span></div>`
-    : `<span class="none">no Q data</span>`;
+    : `<span class="none">${c.q_pending ? "loading Q…" : "no Q data"}</span>`;
   const when = [c.days?.replace(/,/g, " "), c.times].filter(Boolean).join(" · ");
   const rows = [
     ["Instructors", c.instructors.join(", ")],
@@ -188,6 +191,7 @@ function render() {
     : `<li class="empty">No courses match these filters.</li>`;
   $("more").hidden = list.length <= shown;
   $("more").textContent = `Show more (${(list.length - shown).toLocaleString()} left)`;
+  source.onRender?.(list.slice(0, shown));
 }
 
 // --- events ------------------------------------------------------------------
@@ -222,7 +226,7 @@ function wire() {
   $("reset").addEventListener("click", () => update({ ...DEFAULTS, term: state.term }));
   $("more").addEventListener("click", () => { shown += PAGE; render(); });
   // Our own updates use replaceState (no event); this catches pasted or edited URLs.
-  window.addEventListener("hashchange", () => { loadState(); shown = PAGE; render(); });
+  window.addEventListener("hashchange", () => { if (!data) return; loadState(); shown = PAGE; render(); });
   $("filtersToggle").addEventListener("click", (e) => {
     const open = $("sidebar").classList.toggle("open");
     e.target.setAttribute("aria-expanded", open);
@@ -232,17 +236,22 @@ function wire() {
 // --- start -------------------------------------------------------------------
 
 let genedCats = [], divisions = [];
+const source = window.courseFinderSource || { load: () => fetch("data.json").then((r) => r.json()) };
 
-fetch("data.json").then((r) => r.json()).then((d) => {
+function init(d) {
   data = d;
   genedCats = [...new Set(d.courses.flatMap((c) => c.gened))].sort();
   divisions = [...new Set(d.courses.flatMap((c) => c.divisional))].sort();
-  const p = d.profile;
+  const p = d.profile || {};
   $("profile").textContent = [p.concentration, p.track && `${p.track} track`, p.level].filter(Boolean).join(" · ");
   $("generated").textContent = `Data built ${new Date(d.generated).toLocaleString()}. Q = response-weighted average of past "Evaluate the course overall" scores (1–5).`;
   loadState();
-  wire();
   render();
-}).catch(() => {
-  $("results").innerHTML = `<li class="empty">Couldn't load data.json. Start the site with <code>uv run site</code>.</li>`;
+}
+
+window.courseFinder = { setData: init, render: () => data && render() };
+wire();
+source.load().then(init).catch((e) => {
+  console.error(e);
+  $("results").innerHTML = `<li class="empty">Couldn't load course data. Start the site with <code>uv run site</code>.</li>`;
 });

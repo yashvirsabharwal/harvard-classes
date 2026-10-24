@@ -126,6 +126,35 @@ URL. It's served on 127.0.0.1 only, since the data includes your record and
 Q Report data. The page lives in `src/harvard_classes/web/`; rebuild the data
 by restarting the command after re-running any of the scrapers.
 
+## 6. Browser extension (prototype)
+
+```bash
+uv run extension   # builds extension/dist/
+```
+
+Then in Chrome: `chrome://extensions` → turn on Developer mode → **Load
+unpacked** → choose `extension/dist`. Click the extension's toolbar button to
+open the Course Finder.
+
+The extension is the same finder page, but it gets each student's data from
+their own browser session instead of from these scrapers:
+
+- **Record:** reads `my.harvard.edu/student/grades` and the advising report
+  with the student's cookies (sign in to my.harvard first).
+- **Q Reports:** lists all reports once (6 term pages), then fetches reports
+  only for courses on screen, newest-visible first; "Load Q for my open
+  requirements" fetches the rest for courses that fill an open requirement.
+  Results are cached, so each report is fetched once.
+- **Catalog:** bundled (public data exported from `data/harvard.db`), since
+  scraping ~9,000 pages per student would be slow.
+
+Nothing leaves the browser: data is kept in `chrome.storage.local` ("Clear
+stored data" wipes it), and the extension never sees a password; it only uses
+the HarvardKey session already in the browser (it may follow HarvardKey's
+redirects to renew an expired Q Reports session). Source is in `extension/`
+(`harvard.js`: parsers ported from the Python ones; `finder-ext.js`:
+requirement matching ported from `courses.py`, syncing, lazy Q loading).
+
 ## Joining
 
 `qr_reports.course_id` matches `offerings.course_id` (the my.harvard Course ID):
