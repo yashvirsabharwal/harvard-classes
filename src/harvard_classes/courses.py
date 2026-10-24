@@ -10,8 +10,16 @@ Needs the catalog (uv run catalog), your record (uv run import-me) and,
 for the rating/hours columns, Q Reports (uv run qreports). No scores or
 recommendations: Q numbers are shown for reference only.
 
+Which courses count toward a requirement comes, in order of preference, from:
+  1. the official course list my.harvard's "Search by My Requirements" gives
+     for each open requirement (imported by import-me);
+  2. catalog fields, for Gen Ed, divisional and QRD;
+  3. a hand-written rule file for the concentration (src/harvard_classes/rules/).
+
 Overlap rules applied when a course counts toward several requirements:
   * Divisional Distribution and QRD can't share a course (Advising Office).
+  * Language requirement and divisional: unconfirmed, so flagged, not counted
+    as a double.
   * Gen Ed courses don't count for divisional or QRD (encoded in the catalog).
   * Divisional and concentration can share a course (e.g. LS 1A in the audit).
   * Whether Gen Ed courses count toward a concentration is up to the
@@ -42,12 +50,13 @@ DIVISIONAL = {"Science and Engineering and Applied Science": "Science & Engineer
 @dataclass
 class Requirement:
     label: str
-    group: str                   # gened | divisional | qrd | concentration
+    group: str                   # gened | divisional | qrd | language | concentration | college
     matches: callable
     status: str = "not_satisfied"
     note: str = ""
     names_courses: bool = False  # lists specific courses (vs. open-ended like "any Math")
     needed: float | None = None  # units still needed, per the audit
+    source: str = ""             # official | catalog | rule
 
 
 @dataclass
@@ -61,6 +70,7 @@ class Course:
     qrd: str
     level: str
     joint: list[str]
+    term: str = ""
     stats: dict = field(default_factory=dict)
     counts: list[Requirement] = field(default_factory=list)
     needs: str | None = None  # earlier course in a sequence not yet taken, e.g. "MATH 55A"
@@ -83,33 +93,78 @@ def code_matcher(patterns: list[str]):
     return lambda c: bool(rx.match(c.code)) or any(rx.match(j) for j in c.joint)
 
 
+def kind(section: str, title: str) -> tuple[str, str]:
+    """(label, group) for a requirement, from its report section and title."""
+    if section.startswith("General Education"):
+        return f"Gen Ed: {title}", "gened"
+    if section.startswith("Divisional"):
+        return f"Divisional: {title}", "divisional"
+    if title.startswith("Quantitative Reasoning with Data"):
+        return "QRD", "qrd"
+    if title.startswith("Foreign Language"):
+        return "Foreign Language", "language"
+    if section.startswith("Concentration"):
+        return title, "concentration"
+    return title, "college"
+
+
+def official_lists(conn) -> tuple[dict, dict]:
+    """Official requirement queries by title, and the courses each matched per term."""
+    reqs = {r["title"]: dict(r) for r in conn.execute("SELECT * FROM me_official_requirements")}
+    codes: dict = defaultdict(lambda: defaultdict(set))
+    for r in conn.execute("SELECT title, term, code FROM me_official_courses"):
+        codes[r["title"]][r["term"]].add(r["code"])
+    return reqs, codes
+
+
+def catalog_matcher(group: str, title: str):
+    if group == "gened":
+        return lambda c: title in c.gen_ed
+    if group == "divisional":
+        div = DIVISIONAL.get(title, title)
+        return lambda c: div in c.divisional
+    if group == "qrd":
+        return lambda c: c.qrd == "Yes"
+    return None
+
+
 def requirements(conn, include_satisfied: bool) -> tuple[list[Requirement], list[str]]:
     profile = dict(conn.execute("SELECT key, value FROM me_profile").fetchall())
     rules = load_rules(profile.get("concentration"), profile.get("track"))
     by_title = {r["audit_title"].lower(): r for r in (rules or {}).get("requirements", [])}
+    official, official_codes = official_lists(conn)
     statuses = ("not_satisfied", "in_progress", "satisfied") if include_satisfied else ("not_satisfied",)
-    reqs, unmatched = [], []
+    reqs, unmatched, seen = [], [], set()
+
+    def add(title: str, section: str, status: str, needed=None) -> bool:
+        label, group = kind(section, title)
+        rule, off = by_title.get(title.lower()), official.get(title)
+        if status == "not_satisfied" and off and off["available"]:
+            # Official lists already include each cross-listing that counts, so match the code itself.
+            terms = official_codes[title]
+            matches, source, named = (lambda c, t=terms: c.code in t.get(c.term, ())), "official", group == "concentration"
+        elif matcher := catalog_matcher(group, title):
+            matches, source, named = matcher, "catalog", False
+        elif rule:
+            matches, source, named = code_matcher(rule["courses"]), "rule", not rule.get("broad")
+        else:
+            return False
+        note = " ".join(x for x in ((rule or {}).get("note", ""), (off or {}).get("reason") or "") if x)
+        reqs.append(Requirement(rule["label"] if rule else label, group, matches, status, note, named, needed, source))
+        return True
+
     for row in conn.execute(
             f"SELECT * FROM me_requirements WHERE status IN ({','.join('?' * len(statuses))}) ORDER BY idx", statuses):
         title, path, status = row["title"], row["path"] or "", row["status"]
         if NOT_COURSE_REQUIREMENTS.search(title):
             continue
-        if path.startswith("General Education"):
-            reqs.append(Requirement(f"Gen Ed: {title}", "gened", lambda c, t=title: t in c.gen_ed, status))
-        elif path.startswith("Divisional"):
-            div = DIVISIONAL.get(title, title)
-            reqs.append(Requirement(f"Divisional: {title}", "divisional", lambda c, d=div: d in c.divisional, status))
-        elif title.startswith("Quantitative Reasoning with Data"):
-            reqs.append(Requirement("QRD", "qrd", lambda c: c.qrd == "Yes", status))
-        elif rule := by_title.get(title.lower()):
-            reqs.append(Requirement(rule["label"], "concentration", code_matcher(rule["courses"]), status,
-                                    rule.get("note", ""), names_courses=not rule.get("broad")))
-        elif path.startswith("Concentration") and status == "not_satisfied":
+        seen.add(title)
+        if not add(title, path, status, row["units_needed"]) and path.startswith("Concentration") and status == "not_satisfied":
             unmatched.append(title)
-            continue
-        else:
-            continue
-        reqs[-1].needed = row["units_needed"]
+    # Open requirements only "Search by My Requirements" lists (e.g. the language requirement).
+    for title, off in official.items():
+        if title not in seen and off["available"]:
+            add(title, off["section"] or "", "not_satisfied")
     return reqs, unmatched
 
 
@@ -119,6 +174,8 @@ def double_counts(reqs: list[Requirement]) -> int:
     groups = {r.group for r in reqs}
     if {"divisional", "qrd"} <= groups:
         groups.discard("qrd")  # a course can't count for both
+    if {"divisional", "language"} <= groups:
+        groups.discard("language")  # unconfirmed whether it can count for both, so don't promise it
     return len(groups)
 
 
@@ -128,6 +185,8 @@ def overlap_notes(reqs: list[Requirement]) -> list[str]:
     notes = []
     if groups["divisional"] and groups["qrd"]:
         notes.append("Divisional or QRD, not both")
+    if groups["divisional"] and groups["language"]:
+        notes.append("check whether it can count for both language and divisional")
     if groups["gened"] > 1:
         notes.append("listed in 2 Gen Ed categories; check if it can count for both")
     if groups["divisional"] > 1:
@@ -179,7 +238,7 @@ def load_courses(conn, term: str) -> list[Course]:
             grouped[r["subject_catalog"]] = Course(
                 code=r["subject_catalog"], title=r["title"] or "", course_id=r["course_id"],
                 instructors=instructors, gen_ed=r["gen_ed"] or "", divisional=r["divisional"] or "",
-                qrd=r["qrd"] or "", level=r["course_level"] or "", joint=json.loads(r["jointly_offered"] or "[]"))
+                qrd=r["qrd"] or "", level=r["course_level"] or "", joint=json.loads(r["jointly_offered"] or "[]"), term=term)
         else:
             c.instructors += [i for i in instructors if i not in c.instructors]
     return list(grouped.values())

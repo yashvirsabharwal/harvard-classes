@@ -6,6 +6,8 @@ import pytest
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import sync_playwright
 
+from harvard_classes.myharvard import parse_official
+
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = (Path(__file__).parent / "fixtures" / "report_sample.html").read_text()
 
@@ -39,3 +41,11 @@ def test_parse_link(page):
             "text": "ENG-SCI 111-Introduction to Scientific Computing 001 (Iams)"}
     r = page.evaluate("l => Harvard.parseLink(l, '2026 Spring')", link)
     assert (r["course_id"], r["strm"], r["code"], r["instructor_short"]) == (122910, "2262", "ENG-SCI 111", "Iams")
+
+
+def test_parse_official_matches_python(page):
+    sample = (Path(__file__).parent / "fixtures" / "official_requirements_sample.json").read_text()
+    js = page.evaluate("s => Harvard.parseOfficial(JSON.parse(s))", sample)
+    py = parse_official(sample)
+    assert [(j["section"], j["title"], j["query"], j["available"], j["reason"]) for j in js] == \
+           [(p["section"], p["title"], p["query"], bool(p["available"]), p["reason"]) for p in py]

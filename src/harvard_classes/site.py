@@ -76,8 +76,8 @@ def build(conn) -> dict:
     record = [dict(r) for r in conn.execute("SELECT code, term, title, status FROM me_courses ORDER BY term, code")]
     return {
         "generated": db.now(), "profile": profile, "record": record, "terms": terms, "default_term": latest,
-        "requirements": [{"label": r.label, "group": r.group, "status": r.status, "note": r.note, "needed": r.needed}
-                         for r in reqs],
+        "requirements": [{"label": r.label, "group": r.group, "status": r.status, "note": r.note, "needed": r.needed,
+                          "source": r.source} for r in reqs],
         "unmatched": unmatched, "courses": courses,
     }
 

@@ -1,0 +1,9 @@
+{
+ "html": "<div class=\"req-group HCOL\">\n<button id=\"sbr-panel-req-item-HCOL-1\" data-hs-tab=\"#sbr-panel-req-HCOL-1\">College Requirements</button>\n<button id=\"sbr-panel-req-item-HCOL-2\" data-hs-tab=\"#sbr-panel-req-HCOL-2\">Concentration: Demo Studies: Example Track</button>\n</div>\n<div class=\"req-items HCOL\">\n<div id=\"sbr-panel-req-HCOL-1\" class=\"hidden\">\n  <div><a href=\"javascript:void(0);\" class=\"block group\" data-search-text=\"(HU_SBR_ATTR:&quot;LQRYES&quot;)\"><div><h3>Quantitative Reasoning with Data Requirement</h3><p>Search</p></div></a></div>\n</div>\n<div id=\"sbr-panel-req-HCOL-2\" class=\"hidden\">\n  <div><a href=\"javascript:void(0);\" class=\"block group\" data-search-text=\"(HU_COURSE_LIST:000000001_19010101)\"><div><h3>Two core demo courses</h3><span role=\"tooltip\">Search these courses</span></div></a></div>\n  <div><a href=\"javascript:void(0);\" class=\"not-available\" data-reason=\"Thesis requirements can't be searched\"><div><h3>Senior thesis</h3></div></a></div>\n</div>\n</div>",
+ "config": {
+  "HCOL": {
+   "AcadCareer": "HCOL"
+  }
+ },
+ "selected_career_code": "HCOL"
+}

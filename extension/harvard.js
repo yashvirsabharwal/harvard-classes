@@ -121,6 +121,43 @@ const Harvard = (() => {
     return { profile, requirements: reqs };
   }
 
+  // --- my.harvard: "Search by My Requirements" --------------------------------
+  // Each open requirement as a course-search query built from the registrar's
+  // official course lists (port of parse_official in myharvard.py).
+
+  function parseOfficial(json) {
+    const doc = parse(json.html);
+    const sections = {};
+    for (const b of doc.querySelectorAll("button[id^=sbr-panel-req-item-]")) {
+      sections[(b.getAttribute("data-hs-tab") || "").replace(/^#/, "")] = squash(b.textContent);
+    }
+    const items = [];
+    for (const el of new Set(doc.querySelectorAll("a[data-search-text], .not-available"))) {
+      const heading = el.querySelector("h3");
+      const panel = el.closest("[id^=sbr-panel-req-]");
+      const query = el.getAttribute("data-search-text");
+      const available = !!query && !el.classList.contains("not-available");
+      items.push({
+        section: panel ? sections[panel.id] || null : null,
+        title: squash((heading || el).textContent), query, available,
+        reason: available ? null : el.getAttribute("data-reason") || "Not available in Search by My Requirements",
+      });
+    }
+    return items;
+  }
+
+  const CARD_CODE = /data-course-id="[^"]*"[\s\S]*?badge-light[^>]*>([^<]+)</g;  // each card's "Class ID" badge
+
+  // Course codes matching a search query in one term. Public: no login needed.
+  async function queryCourses(hq, term) {
+    const page = async (n) => JSON.parse((await get(`${MYH}/search/?` + new URLSearchParams(
+      { q: "", hq, school: "All", term, sort: "subject_catalog", page: n }))).text);
+    const first = await page(1);
+    const rest = Array.from({ length: Math.ceil(first.total_hits / 15) - 1 }, (_, i) => i + 2);
+    const pages = [first, ...await Promise.all(rest.map(page))];
+    return [...new Set(pages.flatMap((p) => [...p.hits.matchAll(CARD_CODE)].map((m) => squash(m[1]))))];
+  }
+
   // --- Q Reports --------------------------------------------------------------
 
   function parseLink(a, term) {
@@ -194,10 +231,21 @@ const Harvard = (() => {
   async function fetchRecord() {
     const grades = await get(`${MYH}/student/grades`);
     if (!/Course &amp; Grade History|Course & Grade History/.test(grades.text)) return { signedIn: false };
-    const audit = await get(`${MYH}/student/academic-progress/display`);  // slow: generated on request
+    const [audit, home] = await Promise.all([
+      get(`${MYH}/student/academic-progress/display`),  // slow: generated on request
+      get(`${MYH}/`),
+    ]);
+    const tab = parse(home.text).querySelector('[data-search-mode="sbr"][data-schools]');
+    let official = [];
+    try {
+      const r = await get(`${MYH}/search/student-requirements/${tab ? tab.getAttribute("data-schools") : "HCOL"}`);
+      official = parseOfficial(JSON.parse(r.text));
+    } catch (e) {
+      console.warn("official requirements unavailable; falling back to catalog fields and rules", e);
+    }
     const g = parseGrades(grades.text);
     const a = parseAudit(JSON.parse(audit.text));
-    return { signedIn: true, profile: { ...g.profile, ...a.profile }, courses: g.courses, requirements: a.requirements };
+    return { signedIn: true, profile: { ...g.profile, ...a.profile }, courses: g.courses, requirements: a.requirements, official };
   }
 
   async function fetchReportIndex(onProgress) {
@@ -221,8 +269,8 @@ const Harvard = (() => {
   }
 
   return {
-    MYH, QR, parseGrades, parseAudit, parseBrowse, parseLink, parseReport, splitCode,
-    fetchRecord, fetchReportIndex, fetchReport,
+    MYH, QR, parseGrades, parseAudit, parseOfficial, parseBrowse, parseLink, parseReport, splitCode,
+    fetchRecord, queryCourses, fetchReportIndex, fetchReport,
   };
 })();
 

@@ -43,6 +43,7 @@ def test_double_counts():
     assert double_counts([req("divisional"), req("qrd")]) == 1
     assert double_counts([req("concentration"), req("concentration")]) == 1
     assert double_counts([req("divisional"), req("qrd"), req("concentration")]) == 2
+    assert double_counts([req("divisional"), req("language")]) == 1
 
 
 def test_reports_for_counts_each_section_once():

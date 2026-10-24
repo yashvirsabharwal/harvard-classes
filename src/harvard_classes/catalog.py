@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlencode
 
 import requests
 from bs4 import BeautifulSoup
@@ -66,6 +67,23 @@ def text(el) -> str | None:
 
 def search_url(school: str, term: str, page: int) -> str:
     return f"{BASE}/search/?q=&school={school}&term={term}&sort=subject_catalog&page={page}"
+
+
+CARD_CODE = re.compile(r'data-course-id="[^"]*".*?badge-light[^>]*>([^<]+)<', re.S)  # each card's "Class ID" badge
+
+
+def query_courses(hq: str, term: str, workers: int = 6, delay: float = 0.0) -> set[str]:
+    """Course codes matching a my.harvard search query ("hq", e.g. an official
+    requirement's HU_COURSE_LIST query) in one term. Public: no login needed."""
+    def page(n: int) -> dict:
+        return get(f"{BASE}/search/?" + urlencode({"q": "", "hq": hq, "school": "All", "term": term,
+                                                  "sort": "subject_catalog", "page": n}), delay).json()
+    first = page(1)
+    pages = [first]
+    rest = range(2, math.ceil(first["total_hits"] / PER_PAGE) + 1)
+    with ThreadPoolExecutor(workers) as pool:
+        pages += pool.map(page, rest)
+    return {" ".join(m.split()) for p in pages for m in CARD_CODE.findall(p["hits"])}
 
 
 def card_links(hits_html: str, delay: float) -> list[str]:

@@ -27,31 +27,64 @@
     return (c) => rx.test(c.code) || c.joint.some((j) => rx.test(j));
   }
 
+  // Which courses count toward a requirement, in order of preference: the official list
+  // from my.harvard's "Search by My Requirements" (open requirements), catalog tags (Gen Ed,
+  // divisional, QRD), then a hand-written rule file. Port of requirements() in courses.py.
+
+  function kind(section, title) {
+    if (section.startsWith("General Education")) return [`Gen Ed: ${title}`, "gened"];
+    if (section.startsWith("Divisional")) return [`Divisional: ${title}`, "divisional"];
+    if (title.startsWith("Quantitative Reasoning with Data")) return ["QRD", "qrd"];
+    if (title.startsWith("Foreign Language")) return ["Foreign Language", "language"];
+    if (section.startsWith("Concentration")) return [title, "concentration"];
+    return [title, "college"];
+  }
+
+  function catalogMatcher(group, title) {
+    if (group === "gened") return (c) => c.gened.includes(title);
+    if (group === "divisional") { const div = DIVISIONAL[title] || title; return (c) => c.divisional.includes(div); }
+    if (group === "qrd") return (c) => c.qrd;
+    return null;
+  }
+
   function buildRequirements() {
     if (!record) return { reqs: [], unmatched: [] };
     const p = record.profile;
     const rule = rules.find((r) => p.concentration && r.name.toLowerCase().includes(p.concentration.toLowerCase())
       && (!p.track || r.name.toLowerCase().includes(p.track.toLowerCase())));
     const byTitle = Object.fromEntries((rule?.requirements || []).map((r) => [r.audit_title.toLowerCase(), r]));
-    const reqs = [], unmatched = [];
-    for (const row of record.requirements) {
-      const { title, path, status } = row;
-      if (!status || NOT_COURSE_REQUIREMENTS.test(title)) continue;
-      let req = null;
-      if (path.startsWith("General Education")) {
-        req = { label: `Gen Ed: ${title}`, group: "gened", match: (c) => c.gened.includes(title) };
-      } else if (path.startsWith("Divisional")) {
-        const div = DIVISIONAL[title] || title;
-        req = { label: `Divisional: ${title}`, group: "divisional", match: (c) => c.divisional.includes(div) };
-      } else if (title.startsWith("Quantitative Reasoning with Data")) {
-        req = { label: "QRD", group: "qrd", match: (c) => c.qrd };
-      } else if (byTitle[title.toLowerCase()]) {
-        const r = byTitle[title.toLowerCase()];
-        req = { label: r.label, group: "concentration", match: codeMatcher(r.courses), note: r.note || "", names_courses: !r.broad };
-      } else if (path.startsWith("Concentration") && status === "not_satisfied") {
-        unmatched.push(title);
+    const official = Object.fromEntries((record.official || []).map((o) => [o.title, o]));
+    const reqs = [], unmatched = [], seen = new Set();
+
+    const add = (title, section, status, needed = null) => {
+      const [label, group] = kind(section, title);
+      const r = byTitle[title.toLowerCase()], off = official[title];
+      let match, source, named;
+      if (status === "not_satisfied" && off?.available && off.codes && !off.failed) {
+        // Official lists already include each cross-listing that counts, so match the code itself.
+        const terms = Object.fromEntries(Object.entries(off.codes).map(([t, codes]) => [t, new Set(codes)]));
+        match = (c) => !!terms[c.term]?.has(c.code); source = "official"; named = group === "concentration";
+      } else if ((match = catalogMatcher(group, title))) {
+        source = "catalog"; named = false;
+      } else if (r) {
+        match = codeMatcher(r.courses); source = "rule"; named = !r.broad;
+      } else {
+        return false;
       }
-      if (req) reqs.push({ note: "", names_courses: false, ...req, status, needed: row.units_needed });
+      const note = [r?.note, off?.reason].filter(Boolean).join(" ");
+      reqs.push({ label: r ? r.label : label, group, match, status, note, names_courses: named, needed, source });
+      return true;
+    };
+
+    for (const row of record.requirements) {
+      if (!row.status || NOT_COURSE_REQUIREMENTS.test(row.title)) continue;
+      seen.add(row.title);
+      if (!add(row.title, row.path, row.status, row.units_needed) && row.path.startsWith("Concentration")
+          && row.status === "not_satisfied") unmatched.push(row.title);
+    }
+    // Open requirements only "Search by My Requirements" lists (e.g. the language requirement).
+    for (const off of record.official || []) {
+      if (!seen.has(off.title) && off.available) add(off.title, off.section || "", "not_satisfied");
     }
     return { reqs, unmatched };
   }
@@ -59,6 +92,7 @@
   function doubleCounts(reqs) {  // kinds of requirement one course can fill at once
     const groups = new Set(reqs.map((r) => r.group));
     if (groups.has("divisional") && groups.has("qrd")) groups.delete("qrd");  // can't count for both
+    if (groups.has("divisional") && groups.has("language")) groups.delete("language");  // unconfirmed: don't promise it
     return groups.size;
   }
 
@@ -66,6 +100,7 @@
     const n = (g) => reqs.filter((r) => r.group === g).length;
     const notes = [];
     if (n("divisional") && n("qrd")) notes.push("Divisional or QRD, not both");
+    if (n("divisional") && n("language")) notes.push("check whether it can count for both language and divisional");
     if (n("gened") > 1) notes.push("listed in 2 Gen Ed categories; check if it can count for both");
     if (n("divisional") > 1) notes.push("cross-divisional; counts for one division");
     if (n("concentration") > 1) notes.push("fills one concentration slot");
@@ -298,6 +333,9 @@
     try {
       const r = await Harvard.fetchRecord();
       if (r.signedIn) {
+        messages.record = "Reading the official course list for each open requirement…";
+        status();
+        await fetchOfficialCourses(r.official);
         record = { ...r, synced: Date.now() };
         await chrome.storage.local.set({ record });
       } else if (force) {
@@ -307,6 +345,24 @@
       console.warn(e);
     }
     messages.record = "";
+  }
+
+  // Runs each official requirement query for every catalog term (a few at a time;
+  // each query fetches its own result pages in parallel).
+  async function fetchOfficialCourses(official) {
+    const jobs = official.filter((o) => o.available).flatMap((o) => catalog.terms.map((term) => ({ o, term })));
+    for (const o of official) o.codes = {};
+    const run = async () => {
+      for (let job; (job = jobs.shift());) {
+        try {
+          job.o.codes[job.term] = await Harvard.queryCourses(job.o.query, job.term);
+        } catch (e) {
+          console.warn("official query failed", job.o.title, e);
+          job.o.failed = true;  // fall back to catalog tags / rules for this requirement
+        }
+      }
+    };
+    await Promise.all([run(), run(), run()]);
   }
 
   async function syncIndex(force) {

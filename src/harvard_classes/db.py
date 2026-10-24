@@ -143,6 +143,23 @@ CREATE TABLE IF NOT EXISTS me_requirements (
     courses        TEXT                  -- JSON list of course codes applied
 );
 
+-- my.harvard's "Search by My Requirements": each open requirement with the official
+-- course query the registrar's audit uses, and the courses it matches per term.
+CREATE TABLE IF NOT EXISTS me_official_requirements (
+    idx       INTEGER PRIMARY KEY,
+    section   TEXT,                 -- College / General Education / Divisional Distribution / Concentration: ...
+    title     TEXT,                 -- same wording as the advising report line
+    query     TEXT,                 -- my.harvard search syntax, e.g. (HU_COURSE_LIST:000003258_19010101)
+    available INTEGER,              -- 0 when my.harvard can't search this requirement
+    reason    TEXT
+);
+CREATE TABLE IF NOT EXISTS me_official_courses (
+    title TEXT NOT NULL,
+    term  TEXT NOT NULL,
+    code  TEXT NOT NULL,
+    PRIMARY KEY (title, term, code)
+);
+
 CREATE TABLE IF NOT EXISTS qr_comments (
     report_key TEXT NOT NULL,
     question   TEXT NOT NULL,

@@ -68,15 +68,24 @@ Fills:
 ## 3. Your own record (needs HarvardKey)
 
 ```bash
-uv run import-me            # courses taken + degree audit from my.harvard
+uv run import-me            # courses taken, degree audit, official requirement lists
 ```
 
 There's no public API for student records; this reads the same signed-in
-pages my.harvard uses: `/student/grades` (HTML) and
+pages my.harvard uses: `/student/grades` (HTML),
 `/student/academic-progress/display` (JSON wrapping the Academic Advising
-Report). Fills `me_profile` (level, concentration, track), `me_courses`, and
-`me_requirements` (every requirement line with status, units needed, and the
-courses applied). Same `.auth/state.json` session as the Q Reports scraper.
+Report), and `/search/student-requirements/<school>` ("Search by My
+Requirements"). Fills `me_profile` (level, concentration, track),
+`me_courses`, and `me_requirements` (every requirement line with status, units
+needed, and the courses applied). Same `.auth/state.json` session as the Q
+Reports scraper.
+
+"Search by My Requirements" gives each open requirement as a course-search
+query built from the registrar's official course lists (e.g. Core
+Neuroscience is `(HU_COURSE_LIST:000003258_19010101)`). import-me stores
+these in `me_official_requirements` and runs each one against the public
+course search for every catalog term (about 5 s for both terms), storing the
+matches in `me_official_courses`.
 
 ## 4. Courses by requirement
 
@@ -96,19 +105,33 @@ responses). Sorted by course code unless `--sort rating|hours`. Saved to
 Overlap rules: Divisional Distribution and QRD can't share a course (Advising
 Office); Gen Ed courses don't count for divisional or QRD (the catalog never
 tags them); divisional and concentration can share (e.g. LS 1A in the audit);
-Gen Ed counts toward a concentration only if the department says so (listed in
-its rule file); one course fills one concentration slot; a secondary field and
+Gen Ed counts toward a concentration only if the department says so (the
+official lists reflect that); one course fills one concentration slot;
+language requirement and divisional: unconfirmed, so flagged rather than
+counted as a double; a secondary field and
 the concentration can share only one course, and a double concentration at
 most 8 credits (Registrar). Courses you've taken or are taking (including
 cross-listings and renumberings) are hidden, as are graduate-level, research
 and tutorial courses unless the concentration names them (or `--grad`).
 "B" courses whose "A" you haven't taken are flagged.
 
-Concentration requirements come from rule files in
-`src/harvard_classes/rules/` (currently Neuroscience: Neurobiology, Class of
-2029+, from the department worksheet). Gen Ed, divisional and QRD come from
-catalog fields. Not modeled yet: secondary fields, prerequisites beyond A/B
-sequences, schedule conflicts, and the language requirement.
+Which courses count toward a requirement comes, in order of preference, from:
+
+1. **Official lists** from "Search by My Requirements": every open
+   requirement, for any concentration, including the language requirement and
+   anything else the audit tracks. They include each cross-listing that
+   counts and exclude what doesn't (e.g. graduate math, unapproved CS).
+2. **Catalog tags** for Gen Ed, divisional and QRD: used for requirements
+   already satisfied or in progress (the official search only covers open
+   ones). Checked against the official lists for Spring 2027, they differed
+   by one course out of about 480.
+3. **Hand-written rule files** in `src/harvard_classes/rules/` (currently
+   Neuroscience: Neurobiology, Class of 2029+): only when neither of the
+   above applies, e.g. a requirement my.harvard marks as not searchable.
+
+The sidebar tooltip on the website says which source each requirement uses.
+Not modeled yet: secondary fields, prerequisites beyond A/B sequences, and
+schedule conflicts.
 
 ## 5. Website
 
@@ -139,8 +162,11 @@ open the Course Finder.
 The extension is the same finder page, but it gets each student's data from
 their own browser session instead of from these scrapers:
 
-- **Record:** reads `my.harvard.edu/student/grades` and the advising report
-  with the student's cookies (sign in to my.harvard first).
+- **Record:** reads `my.harvard.edu/student/grades`, the advising report, and
+  "Search by My Requirements" with the student's cookies (sign in to
+  my.harvard first), then runs each official requirement query against the
+  public course search for both catalog terms, so requirements work for any
+  concentration without a rule file.
 - **Q Reports:** lists all reports once (the 6 term pages, fetched in
   parallel), then fetches course numbers for courses on screen, newest
   sections first and at most 4 per course; opening a course loads the rest,

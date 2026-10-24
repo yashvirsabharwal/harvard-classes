@@ -65,6 +65,12 @@ const fmtHour = (h) => {
   return `${((hr + 11) % 12) + 1}${min ? ":" + String(min).padStart(2, "0") : ""}${hr < 12 ? "am" : "pm"}`;
 };
 
+const SOURCES = {
+  official: "courses from my.harvard's official requirement list",
+  catalog: "courses by their catalog tags",
+  rule: "courses from a hand-written rule (no official list)",
+};
+
 const reqVisible = (i) => state.showDone || data.requirements[i].status !== "satisfied";
 
 // --- filtering ---------------------------------------------------------------
@@ -122,7 +128,8 @@ function renderSidebar() {
     if (!reqVisible(i)) return "";
     const n = counts[i];
     const status = r.status.replace("_", " ");
-    return `<li><button data-req="${i}" class="${state.reqs.includes(i) ? "on" : ""}" title="${esc(status + (r.note ? " · " + r.note : ""))}">
+    const tip = [status, SOURCES[r.source], r.note].filter(Boolean).join(" · ");
+    return `<li><button data-req="${i}" class="${state.reqs.includes(i) ? "on" : ""}" title="${esc(tip)}">
       <span class="dot ${r.status}"></span><span class="label">${esc(r.label)}</span><span class="n">${n}</span></button></li>`;
   }).join("");
   document.querySelectorAll(".seg [data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === state.mode));
